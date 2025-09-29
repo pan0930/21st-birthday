@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>小遊戲 — 禎＆潘</title>
+<style>
+  :root{
+    --bg:#0f1724; --card:#0b1220; --accent:#f4fbf8; --muted:#9aa7b2; --text:#e6eef3;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family: "Noto Sans TC", Arial, sans-serif;
+    background: linear-gradient(180deg,#071021 0%, #0f1724 100%);
+    color:var(--text); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .container{ width:96%; max-width:900px; padding:26px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+  header{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px}
+  h1{margin:0; font-size:20px; letter-spacing:0.4px}
+  .meta{display:flex; gap:8px; align-items:center}
+  .stat{background:rgba(255,255,255,0.03); padding:6px 10px; border-radius:8px; font-size:14px; color:var(--muted)}
+  main{display:flex; gap:18px}
+  .left{flex:1; min-width:220px}
+  .scene{background:var(--card); padding:18px; border-radius:10px; min-height:220px; line-height:1.8}
+  .choices{margin-top:12px; display:flex; flex-direction:column; gap:10px}
+  button.choice{background:transparent; border:1px solid rgba(255,255,255,0.06); padding:10px 12px; border-radius:8px; color:var(--text); cursor:pointer; text-align:left}
+  button.choice:hover{border-color:var(--accent); transform:translateY(-3px)}
+  .right{width:260px}
+  .panel{background:var(--card); padding:12px; border-radius:10px; margin-bottom:12px}
+  .panel h3{margin:0 0 8px 0; font-size:14px}
+  .inv-list{display:flex; flex-wrap:wrap; gap:8px}
+  .inv-item{background:rgba(255,255,255,0.03); padding:6px 8px; border-radius:8px; font-size:13px}
+  .controls{display:flex; gap:8px; margin-top:8px}
+  .btn{background:var(--accent); color:#042029; border:none; padding:8px 10px; border-radius:8px; cursor:pointer}
+  .muted{color:var(--muted); font-size:13px}
+  footer{margin-top:12px; color:var(--muted); font-size:13px; text-align:center}
+  @media (max-width:720px){ main{flex-direction:column} .right{width:100%} }
+</style>
+</head>
+<body>
+<div class="container" role="application" aria-label="文字冒險遊戲">
+  <header>
+    <div>
+      <h1>小遊戲 — 禎＆潘</h1>
+      <div class="muted">2025 summer memoirs</div>
+    </div>
+    <div class="meta">
+      <div class="stat" id="stat-affection">好感度: 0</div>
+      <div class="stat" id="stat-scene">場景: first meet</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="left">
+      <div class="scene" id="scene-text" tabindex="0">
+        <!-- 劇本文字會在此 -->
+      </div>
+
+      <div class="choices" id="choices">
+        <!-- 選項按鈕會在此 -->
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn" id="saveBtn">save</button>
+        <button class="btn" id="loadBtn">load</button>
+        <button class="btn" id="restartBtn">restart</button>
+      </div>
+    </div>
+
+    <aside class="right">
+      <div class="panel">
+        <h3>角色</h3>
+        <div class="muted"> 🦑 / 🥞 </div>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <input id="playerNameInput" placeholder="你的名字" style="flex:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:var(--text)">
+          <input id="boyfriendNameInput" placeholder="對方名字" style="flex:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:var(--text)">
+        </div>
+        <div class="muted" style="margin-top:8px">改名後請按下「restart」</div>
+        <div style="margin-top:8px">
+          <button class="btn" id="applyNames">套用名稱</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>收穫</h3>
+        <div class="inv-list" id="inventory"></div>
+      </div>
+
+      <div class="panel">
+        <h3>說明</h3>
+        <div class="muted">好感度到達100即可開啟卡片。</div>
+      </div>
+    </aside>
+  </main>
+
+  <footer id="footer">our first summer</footer>
+</div>
+
+<script>
+/*
+  文字冒險範例引擎（易於擴充）
+  - scenes: 場景清單，每個場景包含 id, text, choices（陣列）
+  - choice: { text, target, affection (可正可負), giveItem, requireItem }
+  - 可以在 scenes 陣列中加入任意場景與分支
+*/
+
+/* ===== 初始設定（可改） ===== */
+let playerName = "禎禎";        // 可預設成 Alani
+let boyfriendName = "潘潘";     // 可改為男友名字
+
+/* ===== 遊戲狀態 ===== */
+const state = {
+  current: "start",
+  affection: 0,   // 0-100
+  inventory: []
+};
+
+/* ===== 場景定義（請在這裡客製化劇情） =====
+   範例場景示範多種分支、道具需求與結局
+*/
+const scenes = [
+  {
+    id: "start",
+    title: "相識",
+    text: () => `2025/6/6凌晨，剛放暑假無聊的禎禎不知道幹嘛好，於是躺在床上發了一篇文。
+    恰好潘潘去了底下留言。禎禎和潘潘的緣份就此展開。\n\n得到潘潘的Line後禎禎決定...`,
+    choices: [
+      { text: "主動打招呼", target: "第二天", affection: +5 },
+      { text: "等潘潘傳訊息", target: "no_result", affection: 0 },
+      { text: "加完馬上封鎖", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "第二天",
+    text: () => `禎禎很想找潘潘說話但是不知道該找什麼話題，於是告訴了她自己的mbti是infj跟潘潘的enfp很合。
+    潘潘該怎麼回覆呢？`,
+    choices: [
+      { text: "真假，看來我得好好來研究infj了", target: "經過徹夜的聊天，禎禎好像有點暈了", affection: +5 },
+      { text: "假裝沒看到，不理會禎禎", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "經過徹夜的聊天，禎禎好像有點暈了",
+    text: () => `那天，因為種種原因禎禎心情不好，希望潘潘能安慰他，但潘潘很冷淡，讓禎禎很難過，潘潘講出了他的真實想法想要先緩緩。
+    崩潰到凌晨四點的禎禎該怎麼做呢？
+    
+    
+    （還被她的朋友瑄瑄一直罵）`,
+    choices: [
+      { text: "跟潘潘解釋為什麼一整天都沒有回他訊息，並且道歉", target: "第一次見面", giveItem: "感情迅速升溫", affection: +5 },
+        { text: "已讀不回，直接封鎖斷聯", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "第一次見面",
+    text: () => `單獨和潘潘在電梯裡的禎禎感到非常尷尬，${boyfriendName}這時做了什麼呢？`,
+    choices: [
+      { text: "一直笑，禎禎叫他不要笑！", target: "看電影途中潘潘偷牽禎禎的手", affection: +5 },
+      { text: "你的頭髮好紅，好像渣女喔", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "看電影途中潘潘偷牽禎禎的手",
+    text: () => `前一晚，兩人在訊息裡討論要不要牽手。${boyfriendName}說看當時的氣氛囉。`,
+    choices: [
+      { text: "潘潘勇敢且羞澀地牽起禎禎的手", target: "6/15~6/21兩個人都在日本", giveItem: "硬硬的小潘潘", affection: +5 },
+      { text: "才不牽，覺得太快了，不能讓禎禎得逞", target: "no_result", affection: -5 },
+    ]
+  },
+  {
+    id: "6/15~6/21兩個人都在日本",
+    text: () => `禎禎和潘潘恰好都在日本。
+    兩人只隔了台北到台中的距離。旅行中的潘潘這時該怎麼做呢？`,
+    choices: [
+      { text: "每天分享今天去玩了什麼給禎禎", target: "第二次見面：失約的九份" , giveItem: "第一次說愛你", affection: +5 },
+      { text: "不聯絡，專心玩自己的", target: "no_result", affection: -5 },
+    ]
+  },
+  {
+    id: "第二次見面：失約的九份",
+    text: () => `禎禎和潘潘帶著給彼此從日本帶回來的紀念品回宿舍放，殊不知一不小心就在宿舍從早上十點聊到晚上十點。
+    在這十二小時裡他們兩個從天聊到地，從北聊到南，從西聊到東，聊盡人生大小事。
+    這12個小時怎麼就像是12秒呢？
+
+    但在這當中潘潘得知禎禎是一個很常不開心的人，潘潘該怎麼做呢？`,
+    choices: [
+      { text: "安慰他，陪在她身邊並鼓勵她", target: "反方向列車", affection: +5, giveItem: "潘潘白白的內褲" },
+      { text: "讓她自己消化，不管她", target: "no_result", affection: -5
+      }
+    ]
+  },
+  {
+    id: "反方向列車",
+    text: () => `第三次見面，潘潘去禎禎家裡（禎大膽...），禎禎煮了水餃給潘潘吃。
+    吃飽後，潘潘和禎禎跑去故宮玩，結果搭錯了方向...跑到了深山裡，抵達故宮只剩下半小時能參訪文物，兩人像麻雀般吱渣個不停。
+    回程的時候還下大雨，搭公車回去還搭錯站（禎禎被傳染ㄌ......）
+    並排而坐的兩人對於今天的一切感到荒謬且好笑......這時他們該怎麼做呢？
+
+
+    （而潘潘對禎禎說：「和妳在一起我很放鬆」讓禎禎覺得心暖暖的。）`,
+    choices: [
+      { text: "轉念想，因為一點小錯誤才能讓彼此的關係更緊密", target: "7/21潘潘去台中找禎禎", affection: +5, giveItem: "互相包容的心" },
+      { text: "責備對方", target: "no_result" , affection: -5}
+    ]
+  },
+  {
+    id: "7/21潘潘去台中找禎禎",
+    text: () => `潘潘去台中找禎禎玩，禎禎覺得能在台中見到潘潘的感覺非常不可思議。
+    雖然那天下了大雨，但是有潘潘的陪伴，讓這一切不足一提。
+    （小考驗：那天晚餐吃了什麼？）`,
+    choices: [
+      { text: "飪室咖哩", target: "7/30禎禎去台中找潘潘", affection: +5, giveItem: "潘潘的大肚肚" },
+      { text: "美景紅油抄手", target: "no_result", affection: -5 },
+      { text: "其他", target: "no_result", affection: -2 }
+    ]
+  },
+  {
+    id: "7/30禎禎去台中找潘潘",
+    text: () => `禎禎一大早出發時台中還下了大雨，所幸高鐵過了苗栗後就是好天氣了。
+    潘潘在新竹高鐵站等禎禎出來讓禎禎非常高興。
+    潘潘一大早先禎禎帶去吃了粉漿蛋餅，去竹中，走了一小段十八尖山，下午是清交校園遊覽，走了超級多路。
+    傍晚去了新月沙灘看夕陽，還一起跳了一隻舞。
+    禎禎提議想要在海邊和潘潘共舞，潘潘該如何回應呢？`,
+    choices: [
+      { text: "立刻說好啊，那我們來練習！！", target: "煙火", affection: +5, giveItem: "禎禎第一次遊新竹的經驗" },
+      { text: "拒絕她，覺得很無聊", target: "no_result", affection: -5}
+    ]
+  },
+  {
+    id: "煙火",
+    text: () => `這兩次原本都要去看煙火，但是因為太遠、太多人了後來分別改去華山看鬼滅的展覽（打算要抽卡但太多人了所以擇日來...也因此才能扭到時透的扭蛋。）和吃壽喜燒。
+    （小考驗：禎禎還是非常想去看煙火，這時潘潘說什麼比較好？）`,
+    choices: [
+      { text: "我們明年再一起去看！！", target: "禎禎宿舍" ,giveItem: "臉圓圓", affection: +5},
+      { text: "沒看到就算了，那又沒什麼", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "禎禎宿舍",
+    text: () => `禎禎買了一隻ikea鯊鯊要送給潘潘，去禎禎宿舍時修椅子的阿伯突然進來，此時潘潘該躲到哪裡呢？`,
+    choices: [
+      { text: "躲進廁所", target: "危機", affection: +5, giveItem: "軟軟的小潘潘" },
+      { text: "躲進禎禎的內衣裡面", target: "no_result", affection: 0 }
+    ]
+  },
+  {
+    id: "危機",
+    text: () => `潘潘因為宿營的事情太忙、忽略了禎禎感受，讓禎禎很難過。
+    潘潘該怎麼做呢？`,
+    choices: [
+      { text: "主動道歉，並關心禎禎的感受", target: "兩人有史以來最大爭吵", affection: +5 },
+      { text: "直接不理她，忙自己的事", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "兩人有史以來最大爭吵",
+    text: () => `本該是開開心心終於完成鬼滅抽卡的約定，為何會產生裂縫呢？
+    兩人要如何面對這件事呢？`,
+    choices: [
+      { text: "告訴對方自己的感受，把誤會解開，擁抱和好", target: "和好",giveItem: "更深的理解", affection: +5},
+      { text: "讓禎禎自己在那邊哭，不管她", target: "no_result", affection: -5
+      }
+    ]
+  },
+  {
+    id: "和好",
+    text: () => `去河岸騎腳踏車。買公館的鹹水雞回潘潘宿舍吃，潘潘還切了芭樂給禎禎。
+    禎禎想讓潘潘聞她的臭腳丫，潘潘該怎麼做呢？`,
+    choices: [
+      { text: "大吸一口，告訴她自己很喜歡聞", target: "潘潘在台北做禎禎的生日卡片", affection: +5, giveItem: "禎禎的臭襪子" },
+      { text: "拒絕她，覺得很噁心", target: "no_result", affection: -5 }
+     
+    ]
+  },
+  {
+    id: "潘潘在台北做禎禎的生日卡片",
+    text: () => `潘潘獨自在台北做禎禎的卡片中.........很想禎禎。
+    這時，禎禎該怎麼做呢？`,
+    choices: [
+      { text: "感謝潘潘，告訴他自己很喜歡這份心意", target: "禎禎的21歲生日",giveItem: "潘潘更多的愛", affection: +5 },
+      { text: "不用覺得怎樣，覺得是他應該做的", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "禎禎的21歲生日",
+    text: () => `潘潘帶禎禎去信義吃生日餐，潘潘一路上鬼鬼祟祟的不知道在掩飾什麼.......
+    原來是花！！還是禎禎最愛的藍色，禎禎看了潘潘很用心做的卡片書，感動了落淚。
+    吃飽飯晃晃一起去喝酒，喝醉的潘潘真可愛ㄚ，超級黏人。
+    看到喝醉的潘潘，禎禎要怎麼辦呢？`,
+    choices: [
+      { text: "親親、摸摸照顧他", target: "台北兩日遊", affection: +5, giveItem: "撒嬌黏人的潘潘" },
+      { text: "直接把潘潘打包回家，任由禎禎擺佈", target: "no_result", affection: -5 }
+    ]
+  },
+  {
+    id: "台北兩日遊",
+    text: () => `一起去了大佳河濱公園看向日葵，去了飛機巷看飛機。
+    結束後去了101拿禎禎的iphone。去通化街吃了冰火湯圓。
+    回去潘潘幫洗完澡的禎禎吹頭髮，但潘潘很不會吹，讓禎禎看不下去打算自己吹。
+    這時候潘潘該怎麼做呢？
+`,
+    choices: [
+      { text: "請禎禎耐心的教，幫她吹乾", target: "焦慮的禎禎", giveItem: "跟禎禎一起睡覺", affection: +5 },
+      { text: "丟給她，這女人既然這麼會就讓她自己來", target: "no_result", affection: -5 }
+    ]
+  },{
+    id: "焦慮的禎禎",
+    text: () => `不知道該回家還是留在台北跟潘潘去圓山看飛機的禎禎非常焦慮，在那邊鬧脾氣。
+    潘潘該怎麼做呢？
+`,
+    choices: [
+      { text: "耐心的哄禎禎，一起想解決辦法", target: "圓山看飛機",giveItem: "禎禎幸福的眼淚", affection: +5 },
+      { text: "這女人太煩，直接不理", target: "no_result", affection: -5 }
+    ]
+    },
+    {
+    id: "圓山看飛機",
+    text: () => `在大草皮上兩個人吃蛋糕為彼此慶生，雖然風很大有點掃興，但能和潘潘相處，禎禎都會感到充滿力量。
+    躺在草地上，研究著頭上一架飛過一架的飛機型號。
+    這時，禎禎忍不住問潘潘：你可以跟我那個嗎？
+
+`,
+    choices: [
+      { text: "答應她，滿足她", target: "be continued", affection: +5, giveItem: "難忘的經驗" },
+      { text: "拒絕她，裝作不知道", target: "no_result", affection: -5 }
+    ]
+    },
+
+  /* 結局場景 */
+  {
+    id: "be continued",
+    text: () => `溫暖的晚上。禎禎與潘潘握緊彼此的手。你們的關係更穩定了。
+    兩人的故事未完待續...`,
+    choices: [
+      { text: "重新開始", target: "start" },
+      { text: "離開遊戲", target: "quit" }
+    ]
+  },
+  {
+    id: "no_result",
+    text: () => `結局：帶著一點遺憾。還需要時間。也許未來會更好。`,
+    choices: [
+      { text: "重新開始", target: "start" },
+      { text: "離開遊戲", target: "quit" }
+    ]
+  },
+  {
+
+  },
+  {
+    
+  },
+  {
+    id: "quit",
+    text: () => `遊戲結束～`,
+    choices: [
+      { text: "重新開始", target: "start" }
+    ]
+  }
+];
+
+/* ===== 引擎程式（下方一般不需修改，若要擴充可閱讀註解） ===== */
+
+function findScene(id){
+  return scenes.find(s => s.id === id);
+}
+
+function render(){
+  const scene = findScene(state.current);
+  const sceneTextEl = document.getElementById("scene-text");
+  const choicesEl = document.getElementById("choices");
+  const invEl = document.getElementById("inventory");
+  const affEl = document.getElementById("stat-affection");
+  const sceneStatEl = document.getElementById("stat-scene");
+
+  // 更新標頭與數值
+  affEl.textContent = `好感度: ${state.affection}`;
+  sceneStatEl.textContent = `場景: ${scene.title || scene.id}`;
+
+  // 文字可以是字串或函數（便於插入動態名字）
+  const text = typeof scene.text === "function" ? scene.text() : scene.text;
+  // 換行支援
+  sceneTextEl.innerHTML = text.split("\n").map(l => `<div>${escapeHtml(l)}</div>`).join("");
+
+  // 選項
+  choicesEl.innerHTML = "";
+  scene.choices.forEach((c, idx) => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.innerHTML = `${escapeHtml(c.text)}`;
+    btn.addEventListener("click", () => choose(c));
+    // 如果選項有 requireItem，檢查是否擁有，否則禁用
+    if(c.requireItem && !state.inventory.includes(c.requireItem)){
+      btn.disabled = true;
+      btn.style.opacity = 0.5;
+      btn.title = `需要道具：${c.requireItem}`;
+    }
+    choicesEl.appendChild(btn);
+  });
+
+  // 背包渲染
+  invEl.innerHTML = "";
+  if(state.inventory.length === 0){
+    invEl.innerHTML = `<div class="muted">空</div>`;
+  } else {
+    state.inventory.forEach(it => {
+      const d = document.createElement("div");
+      d.className = "inv-item";
+      d.textContent = it;
+      invEl.appendChild(d);
+    });
+  }
+
+  // 焦點到文字區
+  sceneTextEl.focus();
+}
+
+// 處理選項
+function choose(choice){
+  // 處理好感
+  if(typeof choice.affection === "number"){
+    state.affection = clamp(state.affection + choice.affection, 0, 100);
+  }
+  // 給道具
+  if(choice.giveItem){
+    if(!state.inventory.includes(choice.giveItem)) state.inventory.push(choice.giveItem);
+  }
+  // 移除道具（可擴充）
+  if(choice.removeItem){
+    const i = state.inventory.indexOf(choice.removeItem);
+    if(i >= 0) state.inventory.splice(i,1);
+  }
+
+  // 改變場景
+  if(choice.target){
+    // 如果 target 是 "start"（重新開始）就重設狀態（但保留名字）
+    if(choice.target === "start"){
+      state.current = "start";
+      state.affection = 0;
+      state.inventory = [];
+    } else {
+      state.current = choice.target;
+    }
+  }
+  render();
+}
+
+/* ===== 存檔 / 讀檔 ===== */
+const SAVE_KEY = "textadventure_save_v1";
+
+function saveGame(){
+  const data = {
+    current: state.current,
+    affection: state.affection,
+    inventory: state.inventory,
+    playerName, boyfriendName
+  };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  alert("已儲存遊戲。");
+}
+
+function loadGame(){
+  const raw = localStorage.getItem(SAVE_KEY);
+  if(!raw){ alert("找不到存檔。"); return; }
+  try{
+    const d = JSON.parse(raw);
+    state.current = d.current || "start";
+    state.affection = typeof d.affection === "number" ? d.affection : 0;
+    state.inventory = Array.isArray(d.inventory) ? d.inventory : [];
+    if(d.playerName) playerName = d.playerName;
+    if(d.boyfriendName) boyfriendName = d.boyfriendName;
+
+    // 更新輸入欄位顯示
+    document.getElementById("playerNameInput").value = playerName;
+    document.getElementById("boyfriendNameInput").value = boyfriendName;
+
+    render();
+    alert("已載入存檔。");
+  }catch(e){
+    console.error(e);
+    alert("載入失敗，資料格式有誤。");
+  }
+}
+
+/* ===== UI 控制綁定 ===== */
+document.getElementById("saveBtn").addEventListener("click", saveGame);
+document.getElementById("loadBtn").addEventListener("click", loadGame);
+document.getElementById("restartBtn").addEventListener("click", () => {
+  if(confirm("確定要重新開始嗎？（會重置好感度與收穫）")){
+    state.current = "start";
+    state.affection = 0;
+    state.inventory = [];
+    // 更新輸入欄位名字為預設（不強制）
+    render();
+  }
+});
+document.getElementById("applyNames").addEventListener("click", () => {
+  const p = document.getElementById("playerNameInput").value.trim();
+  const b = document.getElementById("boyfriendNameInput").value.trim();
+  if(p) playerName = p;
+  if(b) boyfriendName = b;
+  alert("已套用名稱。若要從頭開始，請按「重新開始」。");
+  render();
+});
+
+/* ===== 小工具函數 ===== */
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function escapeHtml(str){
+  return str.replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];});
+}
+
+/* ===== 初始化 UI 值 ===== */
+// 將輸入欄位預填名字（可改）
+document.getElementById("playerNameInput").value = playerName;
+document.getElementById("boyfriendNameInput").value = boyfriendName;
+
+// 開始渲染
+render();
+
+/* ===== 可選：在不同好感度下觸發事件或分支
+   若要限制選項出現，可以在 scenes 裡的 choice 加上 requireAffection 或 requireItem
+   程式已示範 requireItem 檢查（在 render 中）；你也可以擴充 choose 與 render 加上更多條件。
+*/
+</script>
+<script>
+// ===== 生動卡片解鎖功能 =====
+function rogersEncode(str){
+  const morse = {
+    'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....',
+    'I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.',
+    'Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-',
+    'Y':'-.--','Z':'--..','&':'.-...', ' ':'/'
+  };
+  return str.toUpperCase().split('').map(c => morse[c] || '').join(' ');
+}
+
+const cardContent = `Dear Pan： 
+
+<p>生日快樂。</p>
+<p>深夜裡時常回想起我與你的這段緣分仍然倍感奇妙，原本八桿子打不著的人卻走在了一起。猶記第一次見面你羞澀的笑容，我第一眼就覺得我會很喜歡你。你唱的《晚安》我聽了無數遍，希望我能一直擁有你的晚安。當時太怕受傷的我在你說要緩緩時退縮了，但還好我鼓起勇氣對你訴說我的想法，讓我們才有機會繼續下去，也謝謝你，在那個晚上讓我們把誤會解開。我不會忘記我們一起漫步在校園裡牽著手甩啊甩，邊唱歌的時候，那是我最珍貴的回憶之一。也不會忘記我們兩個依偎在你宿舍床上講盡我們所有過往。還有你吃冰的模樣，你說兩顆珍珠和仙草像一張臉，我捨得吃它嗎？那時候的我覺得你好有趣，在這麼小的事情也能發現其中的樂趣，也很羨慕你，單純、童心未泯。你問過我我為什麼很多小事也要拍照記錄？因為我覺得我好像一直在忘記某些事情，所以我想要把和你相處的每一刻都盡我所能的記錄下來。
+</p>
+<p>
+我真的很難訴說我對你的情感，不擅言詞，好像只能一直用「我好喜歡你」來表達。但當我感到很幸福以至落淚時，心裡總想著我怎麼能擁有你這麼好的人。你是父母的好兒子、手足間的好哥哥、朋友中的益友、師長稱許的好學生。你對我來說當然也是一個好伴侶、好朋友。你的存在影響我很多，因為你，我好像能更正向且積極的去做好一件事，想要更努力的往上爬。如果能一直和你相伴相隨，我就能更堅定去做好任何事。這個世界帶給我的痛苦很多，但你一定是上天表揚我跨越重重難關的奇蹟糖果，你就好像我的止痛藥一樣，有你在身邊，很多痛楚都顯得微不足道。謝謝你，在我情緒敏感時還是耐心的安慰我、鼓勵我。在我鬧脾氣的時候也不厭其煩的哄我。謝謝你像禮物一樣出現在我的生命裡。謝謝你像太陽一樣照亮我的世界。原來愛是彼此照亮，互相成長。
+</p>
+<p>
+人間本該不令我這麼驚喜的，但是你來了。
+</p>
+<p>
+慚愧的是，在我生日之前我一直認為你並沒有多喜歡我，我常常想很多，總試想著事情最糟糕的情況，試圖讓自己把一段關係看得淡一點，也許就能隨時抽身。因為幸福總是稍縱而逝、而我太害怕受傷。愛情不像親情有天生的紐帶，只憑靠著兩個人一寸一寸的用心建立的。所以請原諒我偶爾會問你喜不喜歡我，我需要反覆確認你對我的情感才能夠安心。但當我得知你如此用心的製作我的生日卡片時，這些擔憂好像煙消雲散了，從來沒有人如此對我，我真的真的很感激。還有上個禮拜一，颱風夜那晚，你冒著風雨來找我，很謝謝你在我需要你的時候出現在我身邊。對我而言，要說出「我很需要你」是非常困難的，我總不想被看穿自己其實很脆弱，但在你面前，我能夠坦然的做自己。其實每天的每天，都會心疼你太累了，我希望你能有一個好的睡眠，希望有很多幸運的事降臨在你的身上，希望你的前途明亮，能夠去做你喜歡的事，希望你每天都能過得快快樂樂、希望你健康平安。我還想跟你一起吃好多好多頓飯，去好多好多地方玩，在清晨鐮倉的海邊、在大雪紛飛的北海道與你再跳下一支、下下一支舞。還想和你牽著手、哼著歌在臺北逛遍市區所有路燈，在凌晨三點的總圖前看星星。還有好多好多事情想和你一起做。和你在一起時間總是過得好快，好多小事因為有了你變得好有意義，時間總不夠供我和你使用。你總能讓能量低的我充飽電。我在製作這個code的時候，有非常多感觸，我對於你的日常終於能夠感同身受，這是件很花時間的事情，但你還是盡你所能的抽空與我相處，我真的很感謝。
+</p>
+<p>希望往後的九月，屬於我們的月份，我們都可以陪在彼此的身邊，一起走下去。願你做最廣大的夢，夢裡有一個小小的我。我要繼續做你的調皮搗蛋臭寶禎禎！！</p>
+<P>我愛你。</P>
+<P>言不盡於此，剩下的就讓我在接下來的日子繼續說給你聽。</P>
+
+<p>2025.9.30 俞禎</p>
+`;
+function createCardModal(){
+  if(document.getElementById("cardModal")) return; // 防重複
+
+  // 建立浮窗容器
+  const modal = document.createElement("div");
+  modal.id = "cardModal";
+  modal.style.position = "fixed";
+  modal.style.top = 0;
+  modal.style.left = 0;
+  modal.style.width = "100%";
+  modal.style.height = "100%";
+  modal.style.background = "rgba(0,0,0,0.7)";
+  modal.style.display = "flex";
+  modal.style.alignItems = "center";
+  modal.style.justifyContent = "center";
+  modal.style.zIndex = 9999;
+  modal.style.animation = "fadeIn 0.5s";
+
+  // 卡片本體
+  const card = document.createElement("div");
+  card.style.background = "#0b1220";
+  card.style.padding = "20px";
+  card.style.borderRadius = "12px";
+  card.style.width = "1200px";
+  card.style.textAlign = "center";
+  card.style.color = "#e6eef3";
+  card.style.boxShadow = "0 10px 30px rgba(0,0,0,0.6)";
+  card.style.animation = "scaleUp 0.5s";
+  card.style.fontFamily = "PingFang TC"; // 換字體
+card.style.fontSize   = "15px";              // 縮小整體文字
+    card.style.lineHeight = "1.5";              // 增加行距
+
+  const title = document.createElement("h2");
+  title.textContent = "💌 卡片解鎖 💌";
+  card.appendChild(title);
+
+  const info = document.createElement("p");
+  const morseCode = rogersEncode("pan&zhen");
+  info.innerHTML = `請輸入密碼解鎖卡片：<br><small>${morseCode}</small>`;
+  card.appendChild(info);
+
+  const input = document.createElement("input");
+  input.style.width = "80%";
+  input.style.padding = "8px";
+  input.style.marginTop = "10px";
+  input.style.borderRadius = "6px";
+  input.style.border = "1px solid #9ad3bc";
+  input.style.background = "#0f1724";
+  input.style.color = "#e6eef3";
+  card.appendChild(input);
+
+  const btn = document.createElement("button");
+  btn.textContent = "解鎖卡片";
+  btn.className = "btn";
+  btn.style.marginTop = "12px";
+  btn.onclick = () => {
+    if(input.value.toLowerCase() === "pan&zhen"){
+      card.innerHTML = `<h2>🎂</h2><p>${cardContent}</p>`;
+      btn.textContent = "關閉";
+      btn.onclick = () => document.body.removeChild(modal);
+    } else {
+      alert("密碼錯誤，再試看看吧～");
+    }
+  };
+
+
+  card.appendChild(btn);
+
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+}
+
+
+// 新增動畫
+const style = document.createElement("style");
+style.textContent = `
+@keyframes fadeIn { from {opacity:0} to {opacity:1} }
+@keyframes scaleUp { from {transform: scale(0.5)} to {transform: scale(1)} }
+`;
+document.head.appendChild(style);
+
+// 檢查好感度
+function checkAffectionForCard(){
+  if(state.affection >= 100){
+    createCardModal();
+  }
+}
+
+// 覆寫 render，保持原有功能
+const originalRender = render;
+render = function(){
+  originalRender();
+  checkAffectionForCard();
+
+
+};
+// 初始化檢查
+checkAffectionForCard();
+</script>
+
+</body>
+</html>
